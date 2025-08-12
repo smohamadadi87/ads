@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sirisma</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script src="database.js"></script>
+    <script>
+    // barcode.js functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const generateBtn = document.getElementById('generateBarcode');
+        const downloadBtn = document.getElementById('downloadBarcode');
+        const lookupBtn = document.getElementById('lookupBarcode');
+        const barcodeText = document.getElementById('barcodeText');
+        const barcodeType = document.getElementById('barcodeType');
+        const scannedBarcode = document.getElementById('scannedBarcode');
+        
+        generateBtn.addEventListener('click', function() {
+            if (barcodeText.value) {
+                JsBarcode("#barcodeCanvas", barcodeText.value, {
+                    format: barcodeType.value,
+                    lineColor: "#000",
+                    width: 2,
+                    height: 100,
+                    displayValue: true
+                });
+            }
+        });
+
+        downloadBtn.addEventListener('click', function() {
+            const canvas = document.getElementById('barcodeCanvas');
+            const link = document.createElement('a');
+            link.download = 'barcode.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+
+        lookupBtn.addEventListener('click', function() {
+            const code = scannedBarcode.value;
+            // Lookup logic would connect with your inventory database
+            document.getElementById('barcodeResult').textContent = 
+                code ? `Looking up: ${code}...` : 'Please enter a barcode';
+        });
+    });
+    </script>
+    <script src="script.js"></script>
+    <script src="sales.js"></script>
+    <script>
+    // borrow.js functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const inventoryDB = window.inventoryDB || [];
+        let borrowings = JSON.parse(localStorage.getItem('borrowings')) || [];
+        
+        // Handle barcode scanning
+        document.getElementById('scanBarcodeBtn').addEventListener('click', function() {
+            const barcodeValue = document.getElementById('scannedBarcode').value;
+            if (barcodeValue) {
+                const foundItem = inventoryDB.find(item => item.code === barcodeValue);
+                if (foundItem) {
+                    document.getElementById('borrowItemDetail').classList.remove('hidden');
+                    document.getElementById('borrowItemName').textContent = foundItem.name;
+                    document.getElementById('borrowItemCode').textContent = foundItem.code;
+                    document.getElementById('searchBorrowItem').value = barcodeValue;
+                }
+            }
+        });
+
+        // Handle manual search
+        document.getElementById('searchBorrowItem').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm.length < 2) {
+                document.getElementById('borrowItemDetail').classList.add('hidden');
+                return;
+            }
+            
+            const foundItem = inventoryDB.find(item => 
+                item.code.toLowerCase().includes(searchTerm) || 
+                item.name.toLowerCase().includes(searchTerm)
+            );
+            
+            if (foundItem) {
+                document.getElementById('borrowItemDetail').classList.remove('hidden');
+                document.getElementById('borrowItemName').textContent = foundItem.name;
+                document.getElementById('borrowItemCode').textContent = foundItem.code;
+            }
+        });
+
+        document.getElementById('borrowForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const borrowerName = document.getElementById('borrowerName').value;
+            const returnDate = document.getElementById('returnDate').value;
+            const itemCode = document.getElementById('borrowItemCode').textContent;
+            const itemName = document.getElementById('borrowItemName').textContent;
+            
+            // Check if item is already borrowed
+            const isAlreadyBorrowed = borrowings.some(b => b.itemCode === itemCode && b.status === 'Dipinjam');
+            if (isAlreadyBorrowed) {
+                alert('Barang ini sudah dipinjam!');
+                return;
+            }
+            
+            const newBorrowing = {
+                itemCode,
+                itemName,
+                borrowerName,
+                borrowedDate: new Date().toLocaleDateString(),
+                returnDate,
+                status: 'Dipinjam'
+            };
+            
+            borrowings.push(newBorrowing);
+            localStorage.setItem('borrowings', JSON.stringify(borrowings));
+            
+            updateBorrowingList();
+        
+        // Handle return of items
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('return-btn')) {
+                const itemCode = e.target.getAttribute('data-id');
+                const borrowing = borrowings.find(b => b.itemCode === itemCode);
+                if (borrowing) {
+                    borrowing.status = 'Dikembalikan';
+                    borrowing.returnDate = new Date().toLocaleDateString();
+                    localStorage.setItem('borrowings', JSON.stringify(borrowings));
+                    updateBorrowingList();
+                    alert('Barang berhasil dikembalikan!');
+                }
+            }
+        });
+            document.getElementById('borrowForm').reset();
+            document.getElementById('borrowItemDetail').classList.add('hidden');
+        });
+
+        function updateBorrowingList() {
+            const tbody = document.getElementById('borrowingList');
+            tbody.innerHTML = '';
+            
+            borrowings.forEach(borrowing => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.itemCode}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.itemName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.borrowerName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.borrowedDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.returnDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 rounded-full bg-yellow-100 text-yellow-800">
+                            ${borrowing.status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${borrowing.status === 'Dipinjam' ? 
+                            `<button class="return-btn px-2 py-1 bg-red-600 text-white rounded-md" data-id="${borrowing.itemCode}">Kembalikan</button>` : 
+                            'Dikembalikan'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${borrowing.status === 'Dipinjam' ? 
+                            `<button class="return-btn px-2 py-1 bg-red-600 text-white rounded-md" data-id="${borrowing.itemCode}">Kembalikan</button>` : 
+                            'Dikembalikan'}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        updateBorrowingList();
+    });
+    </script>
+    <script>
+    // sales.js functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        let cart = [];
+        let sales = [];
+        
+        document.getElementById('checkoutBtn').addEventListener('click', function() {
+            const currentDate = new Date().toLocaleString();
+            const sale = {
+                date: currentDate,
+                items: [...cart],
+                total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+            };
+            sales.push(sale);
+            alert(`Transaksi berhasil! Total: Rp ${sale.total.toLocaleString()}`);
+            cart = [];
+            updateCartUI();
+        });
+
+        document.getElementById('viewReportsBtn').addEventListener('click', function() {
+            displaySalesReport();
+            document.getElementById('salesModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeModal').addEventListener('click', function() {
+            document.getElementById('salesModal').classList.add('hidden');
+        });
+
+        function updateCartUI() {
+            // Implementation would update the cart display
+        }
+
+        function displaySalesReport() {
+            // Implementation would show sales in the modal
+        }
+    });
+    </script>
+    <script>
+    // borrow.js
+    document.addEventListener('DOMContentLoaded', function() {
+        // Connect with database.js for inventory data
+        const inventoryDB = window.inventoryDB || [];
+        let borrowings = JSON.parse(localStorage.getItem('borrowings')) || [];
+        
+        // Search item for borrowing
+        document.getElementById('searchBorrowItem').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm.length < 2) {
+                document.getElementById('borrowItemDetail').classList.add('hidden');
+                return;
+            }
+            
+            const foundItem = inventoryDB.find(item => 
+                item.code.toLowerCase().includes(searchTerm) || 
+                item.name.toLowerCase().includes(searchTerm)
+            );
+            
+            if (foundItem) {
+                document.getElementById('borrowItemDetail').classList.remove('hidden');
+                document.getElementById('borrowItemName').textContent = foundItem.name;
+                document.getElementById('borrowItemCode').textContent = foundItem.code;
+            }
+        });
+
+        // Handle form submission
+        document.getElementById('borrowForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const borrowerName = document.getElementById('borrowerName').value;
+            const returnDate = document.getElementById('returnDate').value;
+            const itemCode = document.getElementById('borrowItemCode').textContent;
+            const itemName = document.getElementById('borrowItemName').textContent;
+            
+            if (!itemCode || !borrowerName || !returnDate) {
+                alert('Silakan lengkapi semua data peminjaman');
+                return;
+            }
+
+            const newBorrowing = {
+                itemCode,
+                itemName,
+                borrowerName,
+                borrowedDate: new Date().toISOString().split('T')[0],
+                returnDate,
+                status: 'Dipinjam'
+            };
+            
+            borrowings.push(newBorrowing);
+            localStorage.setItem('borrowings', JSON.stringify(borrowings));
+            
+            // Update UI and reset form
+            updateBorrowingList();
+            document.getElementById('borrowForm').reset();
+            document.getElementById('borrowItemDetail').classList.add('hidden');
+            alert('Peminjaman berhasil dicatat!');
+
+        // Handle return of items
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('return-btn')) {
+                const itemCode = e.target.getAttribute('data-id');
+                const borrowing = borrowings.find(b => b.itemCode === itemCode);
+                if (borrowing) {
+                    borrowing.status = 'Dikembalikan';
+                    borrowing.returnDate = new Date().toLocaleDateString();
+                    localStorage.setItem('borrowings', JSON.stringify(borrowings));
+                    updateBorrowingList();
+                    alert('Barang berhasil dikembalikan!');
+                }
+            }
+        });
+        });
+
+        // Update borrowing list display
+        function updateBorrowingList() {
+            const tbody = document.getElementById('borrowingList');
+            tbody.innerHTML = '';
+            
+            borrowings.forEach(borrowing => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.itemCode}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.itemName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.borrowerName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.borrowedDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${borrowing.returnDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            ${borrowing.status === 'Dipinjam' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}">
+                            ${borrowing.status}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Initial load
+        updateBorrowingList();
+    });
+    </script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <header class="flex items-center justify-between mb-8 bg-green-600 p-4 rounded-lg shadow-md">
+            <div class="flex items-center">
+                <img src="https://storage.googleapis.com/workspace-0f70711f-8b4e-4d94-86f1-2a93ccde5887/image/a4b4d8bb-412d-41a1-b32a-9328321e2de7.png" alt="Logo Pramuka - Tunas kelapa dengan latar hijau" class="mr-4">
+                <h1 class="text-3xl font-bold text-white">Sistem Inventaris Pramuka</h1>
+            </div>
+            <nav>
+                <ul class="flex space-x-4">
+                    <li><button id="inventoryTab" class="nav-btn active bg-white text-green-600 px-4 py-2 rounded-lg font-medium">Inventaris</button></li>
+                    <li><button id="approvalTab" class="nav-btn bg-green-700 text-white px-4 py-2 rounded-lg font-medium">Persetujuan</button></li>
+                    <li><button id="salesTab" class="nav-btn bg-green-700 text-white px-4 py-2 rounded-lg font-medium">Penjualan</button></li>
+                    <li><button id="borrowTab" class="nav-btn bg-green-700 text-white px-4 py-2 rounded-lg font-medium">Peminjaman</button></li>
+                </ul>
+            </nav>
+        </header>
+
+        <div id="inventorySection">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Tambah Barang Baru</h2>
+                    <form id="itemForm" class="space-y-4">
+                        <input type="hidden" id="itemId">
+                        <div>
+                            <label for="itemName" class="block text-sm font-medium text-gray-700">Nama Barang</label>
+                            <input type="text" id="itemName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" required>
+                        </div>
+                        <div>
+                            <label for="itemCode" class="block text-sm font-medium text-gray-700">Kode Barang (Format: 001/D/2024)</label>
+                            <div class="flex space-x-2 mt-1">
+                                <input type="text" id="itemCodePrefix" class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="001" minlength="3" maxlength="3" pattern="\d{3}" required title="Masukkan 3 digit angka">
+                                <select id="itemCodeDiv" class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm" required>
+                                    <option value="D">D</option>
+                                    <option value="K">K</option>
+                                    <option value="B">B</option>
+                                </select>
+                                <input type="number" id="itemCodeYear" class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="2024" required min="2023" max="2099">
+                            </div>
+                            <div class="mt-2">
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="itemApproved" class="rounded border-gray-300 text-green-600 shadow-sm focus:border-green-500 focus:ring-green-500">
+                                    <span class="ml-2 text-sm text-gray-700">Disetujui</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="itemPrice" class="block text-sm font-medium text-gray-700">Harga (Rp)</label>
+                            <input type="number" id="itemPrice" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500">
+                        </div>
+                        <div>
+                            <label for="itemStock" class="block text-sm font-medium text-gray-700">Stok</label>
+                            <input type="number" id="itemStock" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" required>
+                        </div>
+                        <button type="submit" class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">Simpan Barang</button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Kode Barcode</h2>
+                    <div class="text-center">
+                        <div id="barcodePreview" class="mb-4 p-4 bg-white border rounded-lg flex justify-center">
+                            <canvas id="barcodeCanvas" width="300" height="150"></canvas>
+                            <select id="barcodeType" class="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                                <option value="CODE128">CODE128</option>
+                                <option value="EAN13">EAN-13</option>
+                                <option value="UPC">UPC</option>
+                                <option value="CODE39">CODE39</option>
+                            </select>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded-lg">
+                            <label for="barcodeText" class="block text-sm font-medium text-gray-700 mb-2">Masukkan teks untuk barcode:</label>
+                            <input type="text" id="barcodeText" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 mb-2">
+                            <button id="generateBarcode" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">Generate Barcode</button>
+                            <button id="downloadBarcode" class="mt-2 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 w-full">Download Barcode</button>
+                        </div>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded-lg mt-4">
+                        <h3 class="text-lg font-medium mb-2">Scan Barcode</h3>
+                        <div class="flex">
+                            <input type="text" id="scannedBarcode" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md" placeholder="Paste scanned barcode here">
+                            <button id="lookupBarcode" class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700">Lookup</button>
+                        </div>
+                        <div id="barcodeResult" class="mt-2 text-sm"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Daftar Inventaris</h2>
+                <div class="flex justify-end space-x-2 mb-4">
+                    <button id="exportInventory" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Export Data</button>
+                    <button id="importInventory" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Import Data</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Kode 
+                                    <button id="sortCodeBtn" class="ml-1 text-gray-400 hover:text-gray-600">▲▼</button>
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <span class="inline-flex items-center">
+                                        Barcode
+                                        <span id="barcodeCountBadge" class="ml-1 bg-gray-200 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full">0</span>
+                                    </span>
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryList" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="approvalSection" class="hidden">
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Daftar Persetujuan</h2>
+                
+                <div class="flex justify-between mb-4">
+                    <div>
+                        <button id="addItemBtn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Tambah Barang Baru</button>
+                        <button id="filterApprovedBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 ml-2">Hanya Disetujui</button>
+                        <button id="filterPendingBtn" class="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 ml-2">Hanya Pending</button>
+                    </div>
+                    <div>
+                        <input type="text" id="approvalSearch" class="px-3 py-2 border border-gray-300 rounded-md" placeholder="Cari kode/nama barang">
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <select id="approvalStatusFilter" class="border-none bg-transparent">
+                                        <option value="">Status</option>
+                                        <option value="approved">Disetujui</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="rejected">Ditolak</option>
+                                    </select>
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="approvalList" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="borrowSection" class="hidden">
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Form Peminjaman Barang</h2>
+                <form id="borrowForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Cari Barang</label>
+                        <input type="text" id="searchBorrowItem" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Scan/Masukkan barcode atau nama barang">
+                        <button id="scanBarcodeBtn" class="mt-2 w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Scan Barcode</button>
+                        <div class="mt-2 flex">
+                            <input type="text" id="scannedBarcodeInput" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md" placeholder="Nomor barcode">
+                            <button id="verifyBarcodeBtn" class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700">Verifikasi</button>
+                        </div>
+                        <button id="scanBarcodeBtn" class="mt-2 w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Scan Barcode</button>
+                    </div>
+                    <div id="borrowItemDetail" class="hidden bg-gray-50 p-4 rounded-md">
+                        <div class="flex justify-between mb-2">
+                            <span class="font-medium">Barang:</span> 
+                            <span id="borrowItemName"></span>
+                        </div>
+                        <div class="flex justify-between mb-2">
+                            <span class="font-medium">Kode:</span>
+                            <span id="borrowItemCode"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Nama Peminjam</label>
+                        <input type="text" id="borrowerName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Tanggal Kembali</label>
+                        <input type="date" id="returnDate" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">Ajukan Peminjaman</button>
+                </form>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Daftar Peminjaman Aktif</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Peminjam</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Pinjam</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Kembali</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="borrowingList" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="borrowSection" class="hidden">
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Form Peminjaman Barang</h2>
+                <form id="borrowForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Cari Barang</label>
+                        <input type="text" id="searchBorrowItem" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Scan/Masukkan barcode atau nama barang">
+                    </div>
+                    <div id="borrowItemDetail" class="hidden bg-gray-50 p-4 rounded-md">
+                        <div class="flex justify-between mb-2">
+                            <span class="font-medium">Barang:</span> 
+                            <span id="borrowItemName"></span>
+                        </div>
+                        <div class="flex justify-between mb-2">
+                            <span class="font-medium">Kode:</span>
+                            <span id="borrowItemCode"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Nama Peminjam</label>
+                        <input type="text" id="borrowerName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Tanggal Kembali</label>
+                        <input type="date" id="returnDate" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">Ajukan Peminjaman</button>
+                </form>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Daftar Peminjaman Aktif</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Barang</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Peminjam</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Pinjam</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Kembali</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="borrowingList" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="salesSection" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Pilih Barang</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="searchItem" class="block text-sm font-medium text-gray-700">Cari Barang</label>
+                            <input type="text" id="searchItem" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500" placeholder="Ketik nama/kode barang">
+                        </div>
+                        <div class="h-64 overflow-y-auto border rounded-lg p-2">
+                            <ul id="searchResults" class="space-y-2"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-span-2 bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-xl font-semibold mb-4 text-green-700 border-b pb-2">Transaksi Penjualan</h2>
+                    <div class="mb-4 max-h-96 overflow-y-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Barang</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subtotal</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cartItems" class="bg-white divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-medium">Total:</span>
+                            <span id="totalAmount" class="text-2xl font-bold text-green-600">Rp 0</span>
+                        </div>
+                        <button id="checkoutBtn" class="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 font-bold mb-2">Proses Pembayaran</button>
+                        <button id="viewReportsBtn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 font-bold">Lihat Laporan</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for Sales Reports -->
+    <div id="salesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+        <div class="bg-white p-6 rounded-lg shadow-lg w-11/12 md:w-3/4 lg:w-1/2">
+            <h2 class="text-xl font-semibold mb-4 text-green-700">Laporan Penjualan</h2>
+            <div class="mb-4 h-64 overflow-y-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Barang</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesReport" class="bg-white divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-end">
+                <button id="printReport" class="bg-green-600 text-white px-4 py-2 rounded-md mr-2 hover:bg-green-700">Cetak</button>
+                <button id="closeModal" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600">Tutup</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
